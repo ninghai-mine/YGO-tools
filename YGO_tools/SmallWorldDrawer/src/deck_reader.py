@@ -7,6 +7,14 @@ import sys
 import shutil
 import sqlite3
 
+# ── 卡牌类型标志 ──
+TYPE_MONSTER = 0x1
+TYPE_FUSION = 0x40
+TYPE_SYNCHRO = 0x2000
+TYPE_XYZ = 0x800000
+TYPE_LINK = 0x4000000
+EXTRA_DECK_TYPES = TYPE_FUSION | TYPE_SYNCHRO | TYPE_XYZ | TYPE_LINK
+
 # 路径：源码或 PyInstaller 打包
 _this_dir = os.path.dirname(os.path.abspath(__file__))
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -224,3 +232,37 @@ def _copy_card_image(card_id):
         return True
 
     return False
+
+
+# ── 卡牌类型验证 ──
+
+def is_extra_deck_monster(card_type):
+    """判断是否为额外卡组怪兽（融合/同步/超量/连接）"""
+    return bool(card_type & EXTRA_DECK_TYPES)
+
+
+def can_be_in_main_deck(card_type):
+    """
+    判断卡牌是否可以放入主卡组。
+    怪兽卡（type & 0x1）但非额外卡组怪兽即可。
+    非怪兽卡（魔法/陷阱）也可以放入主卡组。
+    """
+    if card_type & TYPE_MONSTER:
+        return not is_extra_deck_monster(card_type)
+    return True
+
+
+# ── ydk 保存 ──
+
+def save_ydk_file(filepath, main_ids, extra_ids, side_ids):
+    """将卡组保存回 ydk 文件"""
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write("#main\n")
+        for cid in main_ids:
+            f.write(f"{cid}\n")
+        f.write("#extra\n")
+        for cid in extra_ids:
+            f.write(f"{cid}\n")
+        f.write("!side\n")
+        for cid in side_ids:
+            f.write(f"{cid}\n")

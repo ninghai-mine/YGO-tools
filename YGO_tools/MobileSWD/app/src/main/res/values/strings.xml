@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">小世界树绘制</string>
+    <string name="tab_editor">卡组编辑</string>
+    <string name="tab_analysis">关系分析</string>
+    <string name="btn_analyze">分析</string>
+    <string name="btn_select_deck">选择卡组</string>
+    <string name="main_deck">主卡组</string>
+    <string name="side_deck">副卡组</string>
+    <string name="extra_deck">额外卡组</string>
+    <string name="hint_drag">拖拽卡牌到目标区域</string>
+    <string name="loading">加载中…</string>
+    <string name="analyzing">分析中…</string>
+    <string name="no_monsters">主卡组中没有怪兽</string>
+    <string name="chain_graph_title">%s - 检索关系图</string>
+</resources>

@@ -21,7 +21,11 @@ import db_helper
 from SmallWorldDrawer.src.deck_reader import (
     list_available_decks,
     load_deck_cards,
+    save_ydk_file,
+    can_be_in_main_deck,
+    is_extra_deck_monster,
     TMPPIC_DIR,
+    DECK_DIR,
 )
 from SmallWorldDrawer.src.analyzer import (
     load_main_monsters,
@@ -32,7 +36,14 @@ from SmallWorldDrawer.src.analyzer import (
 app = Flask(__name__)
 
 # 内存缓存：存储最近一次加载的卡组分析结果
-_cache = {"sw_map": None, "chain_map": None, "main_ids": None}
+_cache = {
+    "deck_file": None,
+    "main_ids": None,
+    "extra_ids": None,
+    "side_ids": None,
+    "sw_map": None,
+    "chain_map": None,
+}
 
 
 # ── 页面路由 ──
@@ -67,8 +78,11 @@ def api_load_deck():
     except (FileNotFoundError, ValueError) as e:
         return jsonify({"error": str(e)})
 
-    # 缓存主卡组 ID
-    _cache["main_ids"] = result["main_deck"]
+    # 缓存完整的卡组信息
+    _cache["deck_file"] = deck_file
+    _cache["main_ids"] = list(result["main_deck"])
+    _cache["extra_ids"] = list(result["extra_deck"])
+    _cache["side_ids"] = list(result["side_deck"])
 
     # 分析小世界与检索关系
     sw_map = build_small_world_map(result["main_deck"])
@@ -109,6 +123,200 @@ def api_load_deck():
         "total": len(result["all_ids"]),
         "monster_count": len(monster_list),
         "monsters": monster_list,
+        "deck_file": deck_file,
+    })
+
+
+# ── 卡组编辑 API ──
+
+@app.route("/api/deck-detail")
+def api_deck_detail():
+    """返回当前卡组的完整构成（主卡组/额外/副卡组每张卡的详情）"""
+    main_ids = _cache.get("main_ids")
+    extra_ids = _cache.get("extra_ids")
+    side_ids = _cache.get("side_ids")
+    if main_ids is None:
+        return jsonify({"error": "请先加载卡组"}), 400
+
+    name_map = db_helper.load_all_card_names()
+    data_map = db_helper.load_all_datas()
+
+    def _card_info(cid):
+        name = name_map.get(cid, "未知卡牌")
+        data = data_map.get(cid, {})
+        card_type = data.get("type", 0)
+        return {
+            "id": cid,
+            "name": name,
+            "type": card_type,
+            "is_monster": bool(card_type & 1),
+            "is_extra_monster": bool(is_extra_deck_monster(card_type)),
+            "race": data.get("race", 0),
+            "attribute": data.get("attribute", 0),
+            "level": (data.get("level", 0) & 0xFF) if data else 0,
+            "atk": data.get("atk", 0),
+            "def": data.get("def", 0),
+            "has_pic": os.path.exists(os.path.join(TMPPIC_DIR, f"{cid}.jpg")),
+        }
+
+    return jsonify({
+        "deck_file": _cache.get("deck_file"),
+        "main_deck": [_card_info(cid) for cid in main_ids],
+        "extra_deck": [_card_info(cid) for cid in extra_ids],
+        "side_deck": [_card_info(cid) for cid in side_ids],
+    })
+
+
+@app.route("/api/move-card", methods=["POST"])
+def api_move_card():
+    """
+    在卡组各区之间移动卡片。
+    请求体: { card_id, from_section, to_section }
+    section 取值: "main", "extra", "side"
+    验证: 移入主卡组的怪兽不能是额外卡组怪兽。
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "请求为空"}), 400
+
+    card_id = data.get("card_id")
+    from_section = data.get("from_section")
+    to_section = data.get("to_section")
+
+    if not all([card_id, from_section, to_section]):
+        return jsonify({"error": "缺少参数"}), 400
+
+    if from_section == to_section:
+        return jsonify({"error": "目标区与来源区相同"}), 400
+
+    # 检查缓存
+    main_ids = _cache.get("main_ids")
+    extra_ids = _cache.get("extra_ids")
+    side_ids = _cache.get("side_ids")
+    if main_ids is None:
+        return jsonify({"error": "请先加载卡组"}), 400
+
+    sections = {"main": main_ids, "extra": extra_ids, "side": side_ids}
+
+    # 检查卡是否在来源区
+    src_list = sections.get(from_section)
+    if src_list is None:
+        return jsonify({"error": f"无效的来源区: {from_section}"}), 400
+    if card_id not in src_list:
+        return jsonify({"error": f"卡牌 {card_id} 不在 {from_section} 区"}), 400
+
+    # 如果目标区是主卡组，验证卡牌类型
+    if to_section == "main":
+        data_map = db_helper.load_all_datas()
+        card_data = data_map.get(card_id, {})
+        card_type = card_data.get("type", 0)
+        if not can_be_in_main_deck(card_type):
+            name_map = db_helper.load_all_card_names()
+            card_name = name_map.get(card_id, "未知卡牌")
+            return jsonify({
+                "error": f"「{card_name}」是额外卡组怪兽，不能放入主卡组！",
+                "card_id": card_id,
+                "card_name": card_name,
+                "type": card_type,
+            }), 400
+
+    # 执行移动
+    dst_list = sections.get(to_section)
+    if dst_list is None:
+        return jsonify({"error": f"无效的目标区: {to_section}"}), 400
+
+    src_list.remove(card_id)
+    dst_list.append(card_id)
+
+    # 更新缓存
+    _cache["main_ids"] = main_ids
+    _cache["extra_ids"] = extra_ids
+    _cache["side_ids"] = side_ids
+
+    return jsonify({
+        "success": True,
+        "card_id": card_id,
+        "from": from_section,
+        "to": to_section,
+        "counts": {
+            "main": len(main_ids),
+            "extra": len(extra_ids),
+            "side": len(side_ids),
+        },
+    })
+
+
+@app.route("/api/reanalyze", methods=["POST"])
+def api_reanalyze():
+    """使用当前主卡组重新分析小世界关系"""
+    main_ids = _cache.get("main_ids")
+    if main_ids is None:
+        return jsonify({"error": "请先加载卡组"}), 400
+
+    # 重新分析
+    sw_map = build_small_world_map(main_ids)
+    chain_map = build_chain_map(sw_map)
+    _cache["sw_map"] = sw_map
+    _cache["chain_map"] = chain_map
+
+    # 构建怪兽列表
+    monsters = load_main_monsters(main_ids)
+    sorted_ids = sorted(
+        monsters.keys(),
+        key=lambda cid: (
+            -(monsters[cid]["level"] & 0xFF),
+            -monsters[cid]["atk"],
+            -monsters[cid]["def"],
+            cid,
+        ),
+    )
+    monster_list = []
+    for cid in sorted_ids:
+        m = monsters[cid]
+        monster_list.append({
+            "id": cid,
+            "name": m["name"],
+            "level": m["level"] & 0xFF,
+            "atk": m["atk"],
+            "def": m["def"],
+            "race": m["race"],
+            "attribute": m["attribute"],
+            "has_pic": os.path.exists(os.path.join(TMPPIC_DIR, f"{cid}.jpg")),
+            "relation_count": len(sw_map.get(cid, {}).get("relations", [])),
+        })
+
+    return jsonify({
+        "main_count": len(main_ids),
+        "monster_count": len(monster_list),
+        "monsters": monster_list,
+    })
+
+
+@app.route("/api/save-deck", methods=["POST"])
+def api_save_deck():
+    """将当前卡组保存回 ydk 文件"""
+    deck_file = _cache.get("deck_file")
+    main_ids = _cache.get("main_ids")
+    extra_ids = _cache.get("extra_ids")
+    side_ids = _cache.get("side_ids")
+
+    if not all([deck_file, main_ids is not None, extra_ids is not None, side_ids is not None]):
+        return jsonify({"error": "请先加载卡组"}), 400
+
+    filepath = os.path.join(DECK_DIR, deck_file)
+    try:
+        save_ydk_file(filepath, main_ids, extra_ids, side_ids)
+    except Exception as e:
+        return jsonify({"error": f"保存失败: {str(e)}"}), 500
+
+    return jsonify({
+        "success": True,
+        "deck_file": deck_file,
+        "counts": {
+            "main": len(main_ids),
+            "extra": len(extra_ids),
+            "side": len(side_ids),
+        },
     })
 
 
