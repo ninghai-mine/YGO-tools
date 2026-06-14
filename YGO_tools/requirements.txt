@@ -1,0 +1,13 @@
+# SmallWorldDrawer 运行依赖
+flask>=3.0
+flask-cors>=4.0
+networkx>=3.0
+matplotlib>=3.7
+# 打包工具（仅打包时需要）
+# pyinstaller>=6.0
+
+# Python 标准库（无需安装）:
+#   - sqlite3  — 读取 cards.cdb / pack.db
+#   - os       — 文件路径操作
+#   - shutil   — 复制图片文件
+#   - webbrowser / threading — 自动打开浏览器

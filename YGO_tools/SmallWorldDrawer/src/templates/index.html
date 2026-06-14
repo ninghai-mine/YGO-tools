@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmallWorldDrawer - 小世界树绘制</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1923;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a2a3a, #0d1b2a);
+            padding: 20px 40px;
+            border-bottom: 2px solid #c9a84c;
+        }
+        .header h1 { font-size: 24px; color: #c9a84c; letter-spacing: 2px; }
+        .header p { color: #8899aa; font-size: 14px; margin-top: 4px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 30px 20px; }
+
+        /* ── 选择区 ── */
+        .deck-section {
+            background: #1a2a3a;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            border: 1px solid #2a3a4a;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .deck-section h2 { color: #c9a84c; font-size: 16px; white-space: nowrap; }
+
+        .deck-select {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            background: #243447;
+            color: #e0e0e0;
+            border: 1px solid #354a5e;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+        }
+        .deck-select:focus { border-color: #c9a84c; }
+        .deck-select option { background: #1a2a3a; }
+
+        .btn-load {
+            padding: 10px 28px;
+            background: #c9a84c;
+            color: #0f1923;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-load:hover { background: #dab95c; }
+        .btn-load:disabled { background: #4a5a6a; color: #8899aa; cursor: not-allowed; }
+
+        .status {
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+            white-space: nowrap;
+        }
+        .status.loading { display: inline-block; background: #1a2a3a; border: 1px solid #c9a84c; color: #c9a84c; }
+        .status.success { display: inline-block; background: #0a2a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .status.error { display: inline-block; background: #2a0a0a; border: 1px solid #f44336; color: #f44336; }
+
+        /* ── 统计栏 ── */
+        .stat-bar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background: #1a2a3a;
+            padding: 10px 18px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #2a3a4a;
+        }
+        .stat-item .num { font-size: 20px; font-weight: 700; color: #c9a84c; }
+        .stat-item .label { font-size: 11px; color: #8899aa; margin-top: 2px; }
+
+        /* ── 排序信息条 ── */
+        .sort-info {
+            font-size: 12px;
+            color: #667788;
+            margin-bottom: 12px;
+            padding: 0 4px;
+        }
+
+        /* ── 卡牌网格（仅怪兽） ── */
+        .monster-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 10px;
+        }
+        .monster-card {
+            background: #1a2a3a;
+            border-radius: 8px;
+            padding: 6px;
+            text-align: center;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .monster-card:hover {
+            border-color: #c9a84c;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(201,168,76,0.25);
+        }
+        .monster-card img {
+            width: 100%;
+            aspect-ratio: 177/254;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #0f1923;
+        }
+        .monster-card .info {
+            font-size: 11px;
+            margin-top: 4px;
+            color: #ccc;
+            line-height: 1.3;
+        }
+        .monster-card .info .name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .monster-card .info .stats {
+            color: #8899aa;
+            font-size: 10px;
+        }
+        .monster-card .badge {
+            position: absolute;
+            top: 8px; right: 8px;
+            background: rgba(0,0,0,0.7);
+            color: #c9a84c;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        /* ── 模态框（检索关系图） ── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal-content {
+            background: #0f1923;
+            border: 1px solid #c9a84c;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 90vw;
+            max-height: 90vh;
+            position: relative;
+        }
+        .modal-content img {
+            max-width: 80vw;
+            max-height: 80vh;
+            display: block;
+            border-radius: 8px;
+        }
+        .modal-close {
+            position: absolute;
+            top: -12px; right: -12px;
+            width: 32px; height: 32px;
+            background: #c9a84c;
+            color: #0f1923;
+            border: none;
+            border-radius: 50%;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-close:hover { background: #dab95c; }
+        .modal-title {
+            text-align: center;
+            color: #c9a84c;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+        .modal-loading {
+            color: #8899aa;
+            text-align: center;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SmallWorldDrawer</h1>
+        <p>小世界树绘制 — 卡组分析与可视化工具</p>
+    </div>
+    <div class="container">
+        <!-- 选择区 -->
+        <div class="deck-section">
+            <h2>选择卡组</h2>
+            <select class="deck-select" id="deckSelect" onchange="onDeckChange()">
+                <option value="">-- 请选择卡组 --</option>
+            </select>
+            <button class="btn-load" id="btnLoad" onclick="loadDeck()" disabled>
+                读取并分析
+            </button>
+            <div id="status" class="status"></div>
+        </div>
+
+        <!-- 统计栏 -->
+        <div class="stat-bar" id="statBar" style="display:none;"></div>
+
+        <!-- 主卡组怪兽列表 -->
+        <div id="resultSection" style="display:none;">
+            <div class="sort-info">仅显示主卡组怪兽 · 按星级↓ · 攻击力↓ · 防守力↓ 排序</div>
+            <div class="monster-grid" id="monsterGrid"></div>
+        </div>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <div class="modal-title" id="modalTitle">加载中...</div>
+            <div id="modalBody" class="modal-loading">正在生成检索关系图...</div>
+        </div>
+    </div>
+
+    <script>
+        let currentDeck = null;
+
+        // ── 加载卡组列表到下拉框 ──
+        async function loadDecks() {
+            const sel = document.getElementById('deckSelect');
+            sel.innerHTML = '<option value="">-- 请选择卡组 --</option>';
+            try {
+                const resp = await fetch('/api/decks');
+                const data = await resp.json();
+                if (data.error) {
+                    sel.innerHTML += '<option disabled>' + data.error + '</option>';
+                    return;
+                }
+                data.decks.forEach(deck => {
+                    const opt = document.createElement('option');
+                    opt.value = deck.file;
+                    opt.textContent = deck.name + ' (' + deck.count + ' 张)';
+                    sel.appendChild(opt);
+                });
+            } catch(e) {
+                sel.innerHTML += '<option disabled>无法连接服务器</option>';
+            }
+        }
+
+        function onDeckChange() {
+            const sel = document.getElementById('deckSelect');
+            currentDeck = sel.value || null;
+            document.getElementById('btnLoad').disabled = !currentDeck;
+        }
+
+        // ── 加载卡组 ──
+        async function loadDeck() {
+            if (!currentDeck) return;
+            const status = document.getElementById('status');
+            const btn = document.getElementById('btnLoad');
+            btn.disabled = true;
+            status.className = 'status loading';
+            status.textContent = '正在读取并分析...';
+
+            try {
+                const resp = await fetch('/api/load-deck', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ deck_file: currentDeck })
+                });
+                const data = await resp.json();
+                if (data.error) {
+                    status.className = 'status error';
+                    status.textContent = data.error;
+                    btn.disabled = false;
+                    return;
+                }
+                status.className = 'status success';
+                status.textContent = '完成！' + data.monster_count + ' 只怪兽';
+
+                // 统计栏
+                const bar = document.getElementById('statBar');
+                bar.style.display = 'flex';
+                bar.innerHTML = '';
+                [
+                    {num: data.main_count, label: '主卡组'},
+                    {num: data.extra_count, label: '额外卡组'},
+                    {num: data.side_count, label: '副卡组'},
+                    {num: data.monster_count, label: '怪兽'},
+                    {num: data.total, label: '总计'},
+                ].forEach(s => {
+                    const d = document.createElement('div');
+                    d.className = 'stat-item';
+                    d.innerHTML = '<div class="num">' + s.num + '</div><div class="label">' + s.label + '</div>';
+                    bar.appendChild(d);
+                });
+
+                // 怪兽网格
+                const grid = document.getElementById('monsterGrid');
+                grid.innerHTML = '';
+                data.monsters.forEach(m => {
+                    const div = document.createElement('div');
+                    div.className = 'monster-card';
+                    const imgSrc = m.has_pic ? '/api/tmpimg/' + m.id + '.jpg' : '/api/placeholder';
+                    div.innerHTML = `
+                        <img src="${imgSrc}" alt="${m.name}" loading="lazy">
+                        <div class="badge">Lv${m.level}</div>
+                        <div class="info">
+                            <div class="name">${m.name}</div>
+                            <div class="stats">ATK ${m.atk} / DEF ${m.def}</div>
+                        </div>
+                    `;
+                    div.onclick = () => showChainGraph(m.id, m.name);
+                    grid.appendChild(div);
+                });
+
+                document.getElementById('resultSection').style.display = 'block';
+                btn.disabled = false;
+            } catch(e) {
+                status.className = 'status error';
+                status.textContent = '请求失败: ' + e.message;
+                btn.disabled = false;
+            }
+        }
+
+        // ── 检索关系图模态框 ──
+        async function showChainGraph(cardId, cardName) {
+            const overlay = document.getElementById('modalOverlay');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+            overlay.classList.add('visible');
+            title.textContent = cardName + ' - 检索关系图';
+            body.className = 'modal-loading';
+            body.textContent = '正在生成检索关系图...';
+
+            try {
+                const resp = await fetch('/api/chain-graph/' + cardId);
+                if (!resp.ok) {
+                    body.textContent = '加载失败';
+                    return;
+                }
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                body.className = '';
+                body.innerHTML = '<img src="' + url + '" alt="' + cardName + ' 检索关系图">';
+            } catch(e) {
+                body.textContent = '请求失败: ' + e.message;
+            }
+        }
+
+        function closeModal(e) {
+            if (e && e.target !== e.currentTarget) return;
+            document.getElementById('modalOverlay').classList.remove('visible');
+        }
+
+        // ESC 关闭
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') document.getElementById('modalOverlay').classList.remove('visible');
+        });
+
+        // 关闭标签页时自动终止后端进程
+        window.addEventListener('beforeunload', function() {
+            navigator.sendBeacon('/api/shutdown', '');
+        });
+
+        loadDecks();
+    </script>
+</body>
+</html>

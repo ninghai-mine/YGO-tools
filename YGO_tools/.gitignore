@@ -1,0 +1,37 @@
+# --- 数据库 ---
+cdb/
+
+# --- 卡组文件 ---
+deck/
+
+# --- 打包输出 ---
+dist/
+build/
+*.spec
+
+# --- 扩展数据 ---
+expansions/
+
+# --- 卡图资源 ---
+pack/
+picture/
+pics/
+
+#临时资源
+SmallWorldDrawer/tmpdb/*
+SmallWorldDrawer/tmpdb/.gitkeep
+# --- Python 编译产物 ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+localpycs/
+
+# --- IDE 及系统文件 ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
